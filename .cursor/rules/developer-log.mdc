@@ -1,0 +1,156 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Developer Log Maintenance Rule
+
+## Overview
+Maintain a comprehensive developer log in [docs/developer-log.md](mdc:docs/developer-log.md) to track implementation decisions, architectural changes, and development patterns for future reference and team continuity.
+
+## When to Add Log Entries
+Add entries to [docs/developer-log.md](mdc:docs/developer-log.md) whenever you:
+
+### Feature Implementation
+- Implement new features or major functionality
+- Add new CLI commands (per [SPECIFICATION.md](mdc:SPECIFICATION.md) Section 6)
+- Create new SDK methods or classes (per [SPECIFICATION.md](mdc:SPECIFICATION.md) Section 5)
+- Add new pipeline stages (per [SPECIFICATION.md](mdc:SPECIFICATION.md) Section 4)
+
+### Code Modifications
+- Make significant refactoring changes
+- Modify database schema or migrations
+- Change configuration patterns in [.env.example](mdc:.env.example)
+- Update core business logic or data processing
+
+### Architectural Decisions
+- Choose between alternative implementation approaches
+- Establish new coding patterns or conventions
+- Make decisions about technology stack updates
+- Define error handling strategies
+- Set up abstraction layers or interfaces
+
+### Tool Integration
+- Incorporate new dependencies or libraries
+- Add new development tools or scripts
+- Integrate external services (like Apify actors)
+- Set up new build or deployment processes
+
+### Pattern Adoption
+- Start using new design patterns
+- Establish new naming conventions
+- Create reusable components or utilities
+- Define new data structures or models
+
+## Log Entry Format
+Use this consistent format for entries:
+
+```markdown
+## [YYYY-MM-DD] - [Category]: [Brief Title]
+
+**Context**: Why this change was needed
+
+**Decision**: What was implemented/chosen
+
+**Rationale**: Why this approach was selected over alternatives
+
+**Impact**: How this affects the codebase/architecture
+
+**References**: Links to relevant files, documentation, or external resources
+
+**Future Considerations**: Potential improvements or known limitations
+```
+
+## Entry Categories
+Use these standardized categories:
+
+- **FEATURE**: New functionality implementation
+- **REFACTOR**: Code restructuring or optimization
+- **ARCHITECTURE**: Structural or design decisions
+- **DEPENDENCY**: Library or tool additions/changes
+- **PATTERN**: New coding patterns or conventions
+- **CONFIG**: Configuration or environment changes
+- **DATABASE**: Schema or migration changes
+- **INTEGRATION**: External service connections
+- **PERFORMANCE**: Optimization implementations
+- **SECURITY**: Security-related changes
+
+## Example Log Entry
+```markdown
+## 2024-01-15 - ARCHITECTURE: SDK DatabaseManager Abstraction
+
+**Context**: Need to prevent direct database access and centralize all database operations per project guidelines.
+
+**Decision**: Created DatabaseManager class as single point of database interaction, with all application code using SDK methods only.
+
+**Rationale**: 
+- Ensures consistent error handling across database operations
+- Prevents SQL injection vulnerabilities
+- Makes database layer swappable for testing
+- Follows the architecture defined in [SPECIFICATION.md](mdc:SPECIFICATION.md)
+
+**Impact**: 
+- All database operations now go through controlled interface
+- Easier to implement connection pooling and transaction management
+- Simplified error handling and logging
+
+**References**: 
+- [SPECIFICATION.md](mdc:SPECIFICATION.md) Section 5.1 (Core Classes)
+- [.env.example](mdc:.env.example) DATABASE_URL configuration
+
+**Future Considerations**: 
+- May need to add caching layer for frequently accessed data
+- Consider implementing read replicas for scaling
+```
+
+## Maintenance Guidelines
+
+### Regular Updates
+- Add entries immediately after making significant changes
+- Don't wait until end of development session
+- Include context while decisions are fresh in memory
+
+### Cross-References
+- Link to relevant files using `[filename](mdc:filename)` format
+- Reference sections in [SPECIFICATION.md](mdc:SPECIFICATION.md) when applicable
+- Connect related log entries with cross-references
+
+### Team Collaboration
+- Review log entries during code reviews
+- Use log to onboard new team members
+- Reference log when debugging or maintaining code
+
+### Documentation Sync
+- Update [SPECIFICATION.md](mdc:SPECIFICATION.md) when architectural decisions change it
+- Ensure [.env.example](mdc:.env.example) reflects configuration decisions
+- Keep log aligned with actual implementation
+
+## Quality Standards
+
+### Entry Quality
+- **Clear Context**: Explain the problem or need that prompted the change
+- **Specific Decisions**: Document exactly what was implemented
+- **Justified Rationale**: Explain why this approach was chosen
+- **Measurable Impact**: Describe concrete effects on the codebase
+- **Actionable Future Items**: Note specific improvements or considerations
+
+### Avoid These Patterns
+- Vague entries like "fixed bugs" or "improved performance"
+- Implementation details without context or rationale
+- Decisions without explaining alternatives considered
+- Entries that duplicate commit messages without added value
+
+## Integration with Development Workflow
+
+### Before Implementation
+- Consider if the change warrants a log entry
+- Plan the entry structure while designing the solution
+
+### During Implementation
+- Take notes on decisions made during development
+- Document any unexpected challenges or solutions
+
+### After Implementation
+- Write the complete log entry before moving to next task
+- Review entry for completeness and clarity
+- Ensure all referenced files use proper `mdc:` format

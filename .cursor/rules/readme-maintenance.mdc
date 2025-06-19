@@ -1,0 +1,51 @@
+---
+description: Update the readme when finished making changes that alter functionality or usage
+globs: 
+alwaysApply: false
+---
+# README Maintenance Rule
+
+## Overview
+The README must always be kept up to date when architectural or usage changes are made to the Clustera YouTube Ingest project.
+
+## Key Documentation Files
+- [SPECIFICATION.md](mdc:SPECIFICATION.md) - Technical specification and architecture
+- [ABSTRACT.md](mdc:ABSTRACT.md) - Project overview and summary
+- [.env.example](mdc:.env.example) - Configuration template
+
+## When to Update README
+The README should be updated whenever changes are made to:
+
+### Architecture Changes
+- Database schema modifications (Section 3 in [SPECIFICATION.md](mdc:SPECIFICATION.md))
+- Pipeline stages or workflow changes (Section 4 in [SPECIFICATION.md](mdc:SPECIFICATION.md))
+- SDK design or core classes (Section 5 in [SPECIFICATION.md](mdc:SPECIFICATION.md))
+- Technology stack updates (Section 2.2 in [SPECIFICATION.md](mdc:SPECIFICATION.md))
+
+### Usage Changes
+- CLI commands or interface modifications (Section 6 in [SPECIFICATION.md](mdc:SPECIFICATION.md))
+- Configuration requirements or environment variables (Section 7 in [SPECIFICATION.md](mdc:SPECIFICATION.md))
+- Installation or setup procedures
+- API interfaces or SDK methods (Section 5.2 in [SPECIFICATION.md](mdc:SPECIFICATION.md))
+
+### Project Structure Changes
+- New directories or major file reorganization
+- Dependency changes or requirements updates
+- Build or deployment process modifications
+
+## README Content Requirements
+The README should include:
+1. **Project Description** - Aligned with [ABSTRACT.md](mdc:ABSTRACT.md)
+2. **Installation Instructions** - Including environment setup from [.env.example](mdc:.env.example)
+3. **Usage Examples** - Reflecting current CLI commands from [SPECIFICATION.md](mdc:SPECIFICATION.md)
+4. **Architecture Overview** - High-level summary of components from [SPECIFICATION.md](mdc:SPECIFICATION.md)
+5. **Configuration Guide** - Based on Section 7 of [SPECIFICATION.md](mdc:SPECIFICATION.md)
+6. **Development Setup** - Including database initialization (Section 4.0)
+7. **Contributing Guidelines** - If applicable
+
+## Enforcement
+- Always review README when modifying [SPECIFICATION.md](mdc:SPECIFICATION.md)
+- Update README before committing architectural changes
+- Ensure CLI examples in README match actual implementation
+- Verify configuration examples are current with [.env.example](mdc:.env.example)
+- Cross-reference with [ABSTRACT.md](mdc:ABSTRACT.md) for consistency

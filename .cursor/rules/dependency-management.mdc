@@ -1,0 +1,97 @@
+---
+description: When adding new dependencies, frameworks, libs, or tools
+globs: 
+alwaysApply: false
+---
+# Dependency Management Rule
+
+## Overview
+Always use Perplexity to verify the latest stable versions when adding new dependencies to ensure optimal compatibility and security.
+
+## When to Use Perplexity
+Use Perplexity before adding any new dependency to:
+
+### Python Dependencies
+- Check PyPI for the latest stable version
+- Verify compatibility with current Python version (3.8+ per [SPECIFICATION.md](mdc:SPECIFICATION.md))
+- Review recent release notes for breaking changes
+- Confirm security status and maintenance activity
+
+### Key Dependencies to Monitor
+Based on [SPECIFICATION.md](mdc:SPECIFICATION.md) technology stack:
+- **SQLAlchemy** - Database ORM
+- **Pandas** - Data processing
+- **Apify Client** - External API integration
+- **Alembic** - Database migrations (planned)
+- **PostgreSQL drivers** (psycopg2, asyncpg)
+
+### Configuration Files to Update
+When adding dependencies, update:
+- `pyproject.toml` with dependency specifications (UV manages this automatically)
+- `uv.lock` will be updated automatically by UV for reproducible builds
+- [.env.example](mdc:.env.example) if new environment variables are needed
+- Documentation in [SPECIFICATION.md](mdc:SPECIFICATION.md) if technology stack changes
+
+## Perplexity Query Examples
+Use these query patterns:
+
+### Version Checking
+```
+"What is the latest stable version of SQLAlchemy for Python 3.8+ as of [current date]? Include any recent security updates."
+```
+
+### Compatibility Verification
+```
+"Is pandas version X.Y.Z compatible with SQLAlchemy version A.B.C and Python 3.8+? Any known conflicts?"
+```
+
+### Security Assessment
+```
+"Are there any recent security vulnerabilities in [package name] version X.Y.Z? What's the recommended secure version?"
+```
+
+### Alternative Evaluation
+```
+"What are the current best alternatives to [package name] for [use case] in Python? Compare performance and maintenance status."
+```
+
+## Implementation Process
+1. **Research First**: Query Perplexity for latest version and compatibility
+2. **Add with UV**: Use `uv add <package>` to add dependencies
+3. **Document Findings**: Note version rationale in commit messages
+4. **Lock Dependencies**: UV automatically updates `uv.lock` for reproducible builds
+5. **Test Integration**: Verify compatibility with existing stack using `uv run`
+6. **Update Documentation**: Reflect changes in [SPECIFICATION.md](mdc:SPECIFICATION.md) if needed
+
+## Version Pinning Strategy
+- **Exact versions** for production dependencies
+- **Compatible ranges** only for development tools
+- **Security patches** should be applied promptly
+- **Major version updates** require thorough testing
+
+## Examples of Dependency Management with UV
+```bash
+# Good - Research first, then add with UV
+# After researching latest SQLAlchemy version via Perplexity
+uv add "sqlalchemy>=2.0.23,<3.0"  # Latest stable, compatible with async features
+uv add "pandas>=2.1.4,<3.0"       # Stable release, good performance
+
+# Development dependencies
+uv add --dev "pytest>=7.0"
+uv add --dev "black>=23.0"
+
+# Avoid - Adding without research
+uv add sqlalchemy  # No version constraint, could get unstable versions
+```
+
+**UV Lock File Benefits**:
+- Exact versions locked in `uv.lock` for reproducible builds
+- Faster dependency resolution than pip
+- Automatic conflict detection
+
+## Documentation Requirements
+When adding dependencies:
+- Update technology stack section in [SPECIFICATION.md](mdc:SPECIFICATION.md)
+- Add configuration examples to [.env.example](mdc:.env.example) if needed
+- Document any new setup requirements
+- Note compatibility requirements or constraints

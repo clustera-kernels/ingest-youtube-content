@@ -1,0 +1,206 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# General Development Guidelines
+
+## Overview
+Core development principles and restrictions for the Clustera YouTube Ingest project to ensure safe, maintainable, and portable code.
+
+## Database Access Restrictions
+
+### Never Access Database Directly
+- **No direct SQL connections** outside of the SDK's DatabaseManager class
+- **No raw SQL queries** in application code - use SQLAlchemy ORM only
+- **No database schema modifications** outside of migration files
+- **No direct database debugging** - use logging and SDK methods instead
+
+### Proper Database Interaction
+```python
+# Good - Use SDK methods
+from clustera_youtube_ingest import YouTubeIngestor
+ingestor = YouTubeIngestor()
+videos = await ingestor.get_videos_by_channel(channel_id)
+
+# Bad - Direct database access
+import psycopg2
+conn = psycopg2.connect("postgresql://...")
+```
+
+## Application Execution Restrictions
+
+### Never Execute App Directly
+- **No direct Python script execution** of main application modules
+- **No subprocess calls** to run the application
+- **No direct imports** that trigger application startup
+- **Use CLI interface only** for application interaction
+
+### Never Execute Pipeline Commands
+- **No pipeline execution** by the agent - only the user can run pipeline commands
+- **No ingestion commands** that process actual YouTube data (ingest, sync, pipeline, transcripts)
+- **No commands that trigger Apify actors** or external data processing
+- **Only safe commands allowed**: init, status, add-source, list-sources, remove-source, stats, --help
+
+### Proper Application Usage
+```bash
+# Good - Safe commands the agent can run
+uv run clustera-youtube-ingest --help
+uv run clustera-youtube-ingest status
+uv run clustera-youtube-ingest init --check-only
+uv run clustera-youtube-ingest list-sources
+uv run clustera-youtube-ingest stats
+
+# Restricted - Only user can run these
+uv run clustera-youtube-ingest pipeline --url <URL>
+uv run clustera-youtube-ingest ingest --url <URL>
+uv run clustera-youtube-ingest sync --all
+uv run clustera-youtube-ingest transcripts
+
+# Bad - Direct execution
+python -m clustera_youtube_ingest.main
+python src/main.py
+clustera-youtube-ingest sync --all  # Without UV environment
+```
+
+## Testing Restrictions
+
+### Do Not Write Unit Tests
+- **No pytest files** or test directories
+- **No unittest modules** in the codebase
+- **No test fixtures** or mock objects
+- **Focus on integration** through CLI and SDK interfaces only
+
+### Alternative Validation
+- Use CLI commands with UV to verify functionality: `uv run clustera-youtube-ingest --help`
+- Rely on SDK method documentation and examples
+- Validate through configuration and environment setup
+- Use UV for dependency management and environment isolation
+
+## Path Management
+
+### Never Hard-Code Paths
+- **No absolute paths** in code (e.g., `/home/user/project/`)
+- **No relative paths** that assume specific directory structure
+- **Use environment variables** for configurable paths
+- **Use path utilities** for dynamic path construction
+
+### Proper Path Handling
+```python
+# Good - Environment variables and path utilities
+import os
+from pathlib import Path
+
+config_path = os.getenv('CONFIG_PATH', Path.cwd() / 'config')
+data_dir = Path(os.getenv('DATA_DIRECTORY', './data'))
+
+# Bad - Hard-coded paths
+config_path = '/Users/user/project/config'
+data_dir = './data'
+```
+
+## Configuration Management
+
+### Environment-Based Configuration
+- All paths in [.env.example](mdc:.env.example) should be configurable
+- Use relative paths as defaults in environment variables
+- Support both development and production path structures
+
+### Database Configuration
+```python
+# Good - From environment
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+# Bad - Hard-coded
+DATABASE_URL = 'postgresql://user:pass@localhost:5432/clustera'
+```
+
+## File System Operations
+
+### Dynamic Path Construction
+```python
+# Good - Portable path handling
+from pathlib import Path
+import os
+
+project_root = Path(__file__).parent.parent
+migrations_dir = project_root / 'migrations'
+log_file = Path(os.getenv('LOG_DIR', './logs')) / 'ingestion.log'
+
+# Bad - Hard-coded paths
+migrations_dir = '/app/migrations'
+log_file = './logs/ingestion.log'
+```
+
+## Package Management with UV
+
+### Always Use UV
+- **Use UV for all Python operations** - dependency management, virtual environments, script execution
+- **Never use pip directly** - UV provides faster, more reliable dependency resolution
+- **Use `uv run` for CLI commands** - ensures proper environment isolation
+- **Use `uv add` for dependencies** - automatically updates `pyproject.toml` and `uv.lock`
+
+### UV Commands for Development
+```bash
+# Project setup
+uv init clustera-youtube-ingest
+uv sync  # Install dependencies from lock file
+
+# Dependency management
+uv add <package>        # Add production dependency
+uv add --dev <package>  # Add development dependency
+uv remove <package>     # Remove dependency
+uv lock --upgrade       # Update lock file
+
+# Running commands
+uv run <command>        # Run command in project environment
+uv run python script.py # Run Python script
+uv run pytest          # Run tests
+```
+
+## SDK Development Guidelines
+
+### Abstraction Layers
+- Keep database operations within DatabaseManager class
+- Expose functionality through high-level SDK methods
+- Maintain clear separation between CLI and SDK layers
+- Follow the architecture defined in [SPECIFICATION.md](mdc:SPECIFICATION.md)
+
+### Error Handling
+- Never expose raw database errors to users
+- Provide meaningful error messages through SDK
+- Log technical details while showing user-friendly messages
+- Handle path resolution errors gracefully
+
+## Documentation Requirements
+
+### Code Documentation
+- Document path requirements in docstrings
+- Specify environment variable dependencies
+- Include configuration examples in [SPECIFICATION.md](mdc:SPECIFICATION.md)
+- Update [.env.example](mdc:.env.example) when adding new path variables
+
+### Configuration Examples
+```env
+# Good - Configurable paths in .env.example
+DATA_DIRECTORY=./data
+LOG_DIRECTORY=./logs
+CONFIG_PATH=./config
+
+# Migration files location (relative to project root)
+MIGRATIONS_PATH=./migrations
+```
+
+## Enforcement
+
+### Code Review Checklist
+- [ ] No hard-coded paths in any files
+- [ ] No direct database connections outside SDK
+- [ ] No application execution in code
+- [ ] No unit test files created
+- [ ] No pipeline commands executed by agent (only user can run pipeline, ingest, sync, transcripts)
+- [ ] All paths use environment variables or dynamic construction
+- [ ] Configuration properly documented in [.env.example](mdc:.env.example)
+- [ ] UV used for all dependency management (no pip commands)
+- [ ] CLI commands use `uv run` prefix
+- [ ] Dependencies added via `uv add` with proper version constraints

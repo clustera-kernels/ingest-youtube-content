@@ -1,314 +1,119 @@
-# Clustera Kernel Template
+# Clustera YouTube Ingest
 
-This is a template for creating Clustera kernels - single-responsibility microservices that process messages from Apache Kafka as part of the Clustera platform.
+A robust YouTube data ingestion pipeline for the Clustera platform, designed to extract video metadata and transcripts for storage in PostgreSQL.
 
-## What is a Kernel?
+## Features
 
-A kernel is a focused, single-purpose service that:
-- Consumes messages from one or more Kafka topics
-- Processes messages according to its specific business logic
-- Optionally produces messages to other Kafka topics
-- Runs independently and can be scaled horizontally
+- **Stage 0**: Database schema initialization and management
+- **Stage 1**: YouTube source discovery and sync orchestration  
+- **Stage 2**: Video metadata extraction from channels/playlists
+- **Stage 3**: Video transcript ingestion and processing
+- **CLI Interface**: Complete command-line tool for all operations
+- **SDK**: Programmatic interface for integration
 
 ## Quick Start
 
-### 1. Create Your Kernel
-
-From the parent repository, run:
-```bash
-uv run new-kernel
-# or
-make new-kernel
-```
-
-This will create a new kernel repository from this template.
-
-### 2. Configure Your Kernel
-
-Edit `main.py` and update these values:
-
-```python
-KERNEL_NAME = "your-kernel-name"  # Unique identifier
-DEFAULT_TOPIC = "your-input-topic"  # Topic to consume from
-OUTPUT_TOPIC = "your-output-topic"  # Optional: topic to produce to
-```
-
-### 3. Implement Your Logic
-
-Replace the `process_message()` function with your business logic:
-
-```python
-def process_message(message: Any, producer: Optional[KafkaProducer] = None) -> bool:
-    """
-    Process a single Kafka message.
-    
-    Args:
-        message: Kafka message with key, value, headers, etc.
-        producer: Optional producer for sending output messages
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    # Your implementation here
-    return True
-```
-
-### 4. Set Up Environment
-
-Copy and configure the environment template:
-```bash
-cp .env.template .env
-```
-
-Required environment variables:
-- `KAFKA_BOOTSTRAP_SERVERS` - Kafka broker address
-- `KAFKA_CA_CERT` - Base64-encoded CA certificate
-- `KAFKA_CLIENT_CERT` - Base64-encoded client certificate
-- `KAFKA_CLIENT_KEY` - Base64-encoded client key
-
-### 5. Install Dependencies
+### Installation
 
 ```bash
+# Install UV (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install the package
 uv sync
 ```
 
-### 6. Run Your Kernel
+### Environment Setup
 
 ```bash
-python main.py
-# or
-uv run python main.py
+# Copy environment template
+cp .env.example .env
+
+# Edit with your configuration
+export CLUSTERA_DATABASE_URL="postgresql://user:pass@localhost:5432/clustera"
+export APIFY_TOKEN="your_apify_token"
 ```
 
-## Template Structure
-
-```
-your-kernel/
-├── main.py              # Main kernel implementation
-├── pyproject.toml       # Python dependencies
-├── Dockerfile           # Container configuration
-├── .env.template        # Environment variable template
-├── README.md            # This file (update for your kernel)
-├── CLAUDE.md            # AI assistant documentation
-└── docs/
-    └── message-spec.md  # Clustera message specification
-```
-
-## Common Patterns
-
-### Consumer-Only Kernel
-
-For kernels that only consume messages:
-
-```python
-OUTPUT_TOPIC = None  # Disable producer
-
-def process_message(message: Any, producer: Optional[KafkaProducer] = None) -> bool:
-    data = json.loads(message.value.decode('utf-8'))
-    
-    # Process data (e.g., store in database, call API)
-    store_in_database(data)
-    
-    return True
-```
-
-### Transform Kernel
-
-For kernels that transform and forward messages:
-
-```python
-def process_message(message: Any, producer: Optional[KafkaProducer] = None) -> bool:
-    input_data = json.loads(message.value.decode('utf-8'))
-    
-    # Transform data
-    output_data = {
-        "processed_at": datetime.now().isoformat(),
-        "original_id": input_data.get("id"),
-        "transformed": transform_logic(input_data)
-    }
-    
-    # Send to output topic
-    if producer:
-        producer.send(
-            OUTPUT_TOPIC,
-            value=json.dumps(output_data).encode('utf-8'),
-            key=message.key
-        )
-    
-    return True
-```
-
-### Enrichment Kernel
-
-For kernels that enrich messages with external data:
-
-```python
-def process_message(message: Any, producer: Optional[KafkaProducer] = None) -> bool:
-    data = json.loads(message.value.decode('utf-8'))
-    
-    # Enrich with external data
-    enriched = {
-        **data,
-        "user_details": fetch_user_details(data["user_id"]),
-        "location_info": geocode_address(data["address"])
-    }
-    
-    # Forward enriched message
-    if producer:
-        producer.send(OUTPUT_TOPIC, value=json.dumps(enriched).encode('utf-8'))
-    
-    return True
-```
-
-## Error Handling
-
-The template includes basic error handling. Enhance it based on your needs:
-
-```python
-def process_message(message: Any, producer: Optional[KafkaProducer] = None) -> bool:
-    try:
-        # Your processing logic
-        return True
-    except ValidationError as e:
-        # Log and skip invalid messages
-        logging.warning(f"Invalid message: {e}")
-        return True  # Mark as processed to move on
-    except TemporaryError as e:
-        # Retry temporary failures
-        logging.error(f"Temporary failure: {e}")
-        return False  # Will not commit offset
-    except Exception as e:
-        # Handle unexpected errors
-        logging.error(f"Unexpected error: {e}", exc_info=True)
-        # Decide: skip (return True) or retry (return False)
-        return False
-```
-
-## Testing
-
-Create tests for your kernel:
-
-```python
-# test_kernel.py
-import json
-from unittest.mock import Mock
-from main import process_message
-
-def test_process_message():
-    # Create mock message
-    message = Mock()
-    message.value = json.dumps({"test": "data"}).encode('utf-8')
-    message.key = b"test-key"
-    message.offset = 123
-    
-    # Create mock producer
-    producer = Mock()
-    
-    # Test processing
-    result = process_message(message, producer)
-    
-    assert result == True
-    # Assert producer was called correctly
-    producer.send.assert_called_once()
-```
-
-## Deployment
-
-### Docker
-
-Build and run with Docker:
+### Initialize Database
 
 ```bash
-docker build -t clustera-your-kernel .
-docker run --env-file .env clustera-your-kernel
+uv run clustera-youtube-ingest init
 ```
 
-### Railway
+### Add YouTube Sources
 
-1. Connect your kernel's GitHub repository to Railway
-2. Add environment variables from `.env`
-3. Deploy with automatic restarts on failure
+```bash
+# Add a channel
+uv run clustera-youtube-ingest add-source --url "https://www.youtube.com/@channelname"
 
-## Monitoring
-
-The kernel logs important events:
-- Startup and shutdown
-- Partition assignments
-- Message processing (with offsets)
-- Errors and warnings
-
-Monitor these logs in your deployment environment.
-
-## Advanced Configuration
-
-### Batch Processing
-
-To process messages in batches, modify `MAX_POLL_RECORDS`:
-
-```python
-MAX_POLL_RECORDS = 100  # Process up to 100 messages at once
+# Add a playlist
+uv run clustera-youtube-ingest add-source --url "https://www.youtube.com/playlist?list=PLxxxxxx"
 ```
 
-### Custom Serialization
+### Sync Sources
 
-For non-JSON messages, implement custom serialization:
+```bash
+# Sync all sources
+uv run clustera-youtube-ingest sync --all
 
-```python
-import pickle
-import msgpack
-
-def process_message(message: Any, producer: Optional[KafkaProducer] = None) -> bool:
-    # Deserialize based on content type
-    if message.headers.get("content-type") == "application/msgpack":
-        data = msgpack.unpackb(message.value)
-    elif message.headers.get("content-type") == "application/pickle":
-        data = pickle.loads(message.value)
-    else:
-        data = json.loads(message.value.decode('utf-8'))
-    
-    # Process data...
+# Sync specific source
+uv run clustera-youtube-ingest sync --source-id 1
 ```
 
-### Multiple Topics
+### Ingest Videos
 
-To consume from multiple topics:
+```bash
+# Ingest from specific URL
+uv run clustera-youtube-ingest ingest --url "https://www.youtube.com/@channelname"
 
-```python
-TOPICS = ["topic1", "topic2", "topic3"]
-
-# In main():
-consumer.subscribe(TOPICS, listener=PartitionListener())
+# Process transcripts
+uv run clustera-youtube-ingest transcripts --missing-only --limit 50
 ```
 
-## Troubleshooting
+## CLI Commands
 
-### SSL Certificate Issues
+- `init` - Initialize database schema
+- `status` - Check system status
+- `add-source` - Add YouTube source for monitoring
+- `list-sources` - List configured sources
+- `remove-source` - Remove a source
+- `sync` - Sync sources (Stage 1)
+- `ingest` - Ingest videos from URL (Stage 2)
+- `transcripts` - Process video transcripts (Stage 3)
+- `stats` - Show ingestion statistics
 
-If you get SSL errors:
-1. Ensure certificates are properly base64-encoded
-2. Check certificate expiration
-3. Verify certificate permissions
+## Architecture
 
-### Consumer Lag
+The system follows a multi-stage pipeline architecture:
 
-If your kernel falls behind:
-1. Increase `MAX_POLL_RECORDS` for batch processing
-2. Optimize `process_message()` performance
-3. Scale horizontally (run multiple instances)
+1. **Stage 0**: Database initialization and schema management
+2. **Stage 1**: Source synchronization and orchestration
+3. **Stage 2**: Video metadata extraction using Apify actors
+4. **Stage 3**: Transcript extraction and processing
 
-### Memory Issues
+## Configuration
 
-For memory-intensive processing:
-1. Process messages one at a time (`MAX_POLL_RECORDS = 1`)
-2. Implement streaming processing
-3. Use external storage for large data
+Key environment variables:
 
-## Next Steps
+- `CLUSTERA_DATABASE_URL` - PostgreSQL connection string
+- `APIFY_TOKEN` - Apify API token for data extraction
+- `MAX_CONCURRENT_SYNCS` - Maximum concurrent sync operations
+- `BATCH_SIZE_VIDEOS` - Video processing batch size
 
-1. Update this README with your kernel's specific documentation
-2. Add integration tests
-3. Set up monitoring and alerting
-4. Configure auto-scaling based on lag
-5. Implement health checks
+## Development
 
-For more information about the Clustera platform and message specifications, see `docs/message-spec.md`.
+```bash
+# Install development dependencies
+uv sync --dev
+
+# Run tests
+uv run pytest
+
+# Format code
+uv run black .
+uv run isort .
+```
+
+## License
+
+MIT License - see LICENSE file for details. 

@@ -1,0 +1,235 @@
+---
+description: When modifying models, database, or adding migrations
+globs: 
+alwaysApply: false
+---
+# Migration and Model Management Workflow
+
+## Overview
+This project uses Alembic for database schema version control. All schema changes must follow the migration workflow to maintain database consistency across environments.
+
+## Model Modification Workflow
+
+### 1. Always Modify Models First
+- Make changes to [src/clustera_youtube_ingest/models.py](mdc:src/clustera_youtube_ingest/models.py) BEFORE creating migrations
+- Models are the single source of truth for database schema
+- Never edit migration files to add new schema - always modify models first
+
+### 2. Model Change Examples
+
+```python
+# Adding a new column
+class DatasetYouTubeVideo(Base):
+    # ... existing columns ...
+    new_field = Column(String(100), nullable=True)  # Always start nullable for existing data
+
+# Adding a new table
+class NewDatasetTable(Base):
+    __tablename__ = 'new_dataset_table'
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    created_at = Column(DateTime, server_default=func.current_timestamp())
+```
+
+### 3. Migration Generation Commands
+
+```bash
+# Generate migration after model changes
+uv run clustera-youtube-ingest migrate create -m "Add new_field to videos table"
+
+# For manual data migrations (no auto-generation)
+uv run clustera-youtube-ingest migrate create -m "Migrate legacy data format" --no-autogenerate
+```
+
+## Migration Best Practices
+
+### 1. Migration File Review
+- Always review generated migration files in [migrations/versions/](mdc:migrations/versions) before applying
+- Ensure both `upgrade()` and `downgrade()` functions are correct
+- Test downgrade paths for data safety
+
+### 2. Column Addition Guidelines
+```python
+# Good: Start with nullable for existing data
+op.add_column('table_name', sa.Column('new_column', sa.String(100), nullable=True))
+
+# After migration, you can make required in separate migration:
+op.alter_column('table_name', 'new_column', nullable=False, server_default='default_value')
+```
+
+### 3. Index Management
+```python
+# Always name indexes explicitly
+op.create_index('idx_table_column_name', 'table_name', ['column_name'])
+
+# For full-text search (PostgreSQL)
+op.execute("CREATE INDEX idx_table_fts ON table_name USING gin(to_tsvector('english', text_column))")
+```
+
+## File Structure Integration
+
+### Key Files for Migration Work
+- [src/clustera_youtube_ingest/models.py](mdc:src/clustera_youtube_ingest/models.py) - SQLAlchemy models (modify here first)
+- [src/clustera_youtube_ingest/migration_manager.py](mdc:src/clustera_youtube_ingest/migration_manager.py) - Migration management integration
+- [src/clustera_youtube_ingest/database.py](mdc:src/clustera_youtube_ingest/database.py) - Database manager (uses migrations via init_schema())
+- [alembic.ini](mdc:alembic.ini) - Alembic configuration
+- [migrations/env.py](mdc:migrations/env.py) - Alembic environment setup
+- [migrations/versions/](mdc:migrations/versions) - Individual migration files
+
+### CLI Integration
+Migration commands are integrated into [src/clustera_youtube_ingest/cli.py](mdc:src/clustera_youtube_ingest/cli.py):
+- `migrate status` - Check current migration state
+- `migrate upgrade` - Apply pending migrations
+- `migrate create` - Generate new migrations
+- `migrate history` - View migration timeline
+
+## Workflow Steps
+
+### 1. Development Workflow
+```bash
+# 1. Modify models in models.py
+# 2. Generate migration
+uv run clustera-youtube-ingest migrate create -m "Descriptive message"
+
+# 3. Review generated migration file
+# 4. Test migration
+uv run clustera-youtube-ingest migrate upgrade
+
+# 5. Test application with new schema
+uv run clustera-youtube-ingest status
+```
+
+### 2. Production Deployment
+```bash
+# 1. Backup database
+pg_dump $CLUSTERA_DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
+
+# 2. Check migration status
+uv run clustera-youtube-ingest migrate status
+
+# 3. Apply migrations
+uv run clustera-youtube-ingest migrate upgrade
+
+# 4. Verify schema
+uv run clustera-youtube-ingest status
+```
+
+## Integration with Existing Code
+
+### DatabaseManager Integration
+The [src/clustera_youtube_ingest/database.py](mdc:src/clustera_youtube_ingest/database.py) `init_schema()` method now uses Alembic:
+- Automatically detects fresh vs existing databases
+- Stamps existing pre-Alembic databases
+- Applies pending migrations
+- Maintains backward compatibility
+
+### SDK Integration
+```python
+# The SDK automatically handles migrations during initialization
+from clustera_youtube_ingest import YouTubeIngestor
+
+ingestor = YouTubeIngestor()
+result = ingestor.init_database()  # Uses Alembic internally
+
+# Result includes migration information
+print(f"Migration method: {result['migration_method']}")  # "alembic"
+print(f"New revision: {result['new_revision']}")
+```
+
+## Data Migration Patterns
+
+### 1. Simple Column Addition
+```python
+def upgrade() -> None:
+    op.add_column('dataset_youtube_video', sa.Column('quality_score', sa.Float(), nullable=True))
+
+def downgrade() -> None:
+    op.drop_column('dataset_youtube_video', 'quality_score')
+```
+
+### 2. Data Transformation Migration
+```python
+def upgrade() -> None:
+    # Add new column
+    op.add_column('dataset_youtube_video', sa.Column('duration_seconds', sa.Integer(), nullable=True))
+    
+    # Migrate data
+    connection = op.get_bind()
+    connection.execute("""
+        UPDATE dataset_youtube_video 
+        SET duration_seconds = EXTRACT(EPOCH FROM duration::interval)
+        WHERE duration IS NOT NULL
+    """)
+
+def downgrade() -> None:
+    op.drop_column('dataset_youtube_video', 'duration_seconds')
+```
+
+### 3. Table Creation with Relationships
+```python
+def upgrade() -> None:
+    op.create_table('dataset_youtube_playlist',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('playlist_id', sa.String(50), nullable=False),
+        sa.Column('source_list_id', sa.Integer(), nullable=True),
+        sa.ForeignKeyConstraint(['source_list_id'], ['ctrl_youtube_lists.id']),
+        sa.PrimaryKeyConstraint('id'),
+        sa.UniqueConstraint('playlist_id')
+    )
+    op.create_index('idx_playlist_source', 'dataset_youtube_playlist', ['source_list_id'])
+```
+
+## Error Handling and Rollback
+
+### Common Migration Issues
+1. **Table already exists**: Usually means migration state is inconsistent
+   ```bash
+   uv run clustera-youtube-ingest migrate stamp --revision head
+   ```
+
+2. **Migration fails mid-way**: Restore from backup and fix migration
+   ```bash
+   psql $CLUSTERA_DATABASE_URL < backup.sql
+   # Fix migration file, then retry
+   ```
+
+3. **Rollback needed**: Use downgrade (test in development first)
+   ```bash
+   uv run clustera-youtube-ingest migrate downgrade -1  # Go back one migration
+   ```
+
+## Testing Migration Changes
+
+### Before Committing
+1. Test upgrade path on development database
+2. Test downgrade path to ensure reversibility
+3. Verify application functionality with new schema
+4. Check that existing data remains intact
+
+### Validation Commands
+```bash
+# Check migration status
+uv run clustera-youtube-ingest migrate status
+
+# Verify database schema
+uv run clustera-youtube-ingest status
+
+# Test basic functionality
+uv run clustera-youtube-ingest list-sources
+```
+
+## Important Restrictions
+
+### Never Do These Things
+- Never edit existing migration files after they've been applied
+- Never modify database schema directly with SQL (use migrations)
+- Never delete migration files (they're version control history)
+- Never skip migration workflow for "quick fixes"
+
+### Follow These Patterns
+- Always backup before production migrations
+- Always test migrations in development first
+- Always use descriptive migration messages
+- Always review auto-generated migrations
+- Always ensure migrations are reversible when possible

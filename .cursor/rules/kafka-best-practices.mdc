@@ -1,0 +1,247 @@
+---
+description: When publishing or consuming from kafka
+globs: 
+alwaysApply: false
+---
+# Kafka Consumer Best Practices
+
+## Overview
+Guidelines for implementing robust Kafka consumers with proper commit strategies and error handling patterns for the Clustera YouTube Ingest project.
+
+## Consumer Configuration Requirements
+
+### Disable Auto-Commit
+**ALWAYS disable auto-commit** for Kafka consumers to ensure data processing reliability:
+
+```python
+consumer = KafkaConsumer(
+    'topic-name',
+    bootstrap_servers=['localhost:9092'],
+    enable_auto_commit=False,  # CRITICAL: Never auto-commit
+    auto_offset_reset='earliest',
+    value_deserializer=lambda m: json.loads(m.decode('utf-8'))
+)
+```
+
+### Manual Commit Strategy
+**Only commit offsets after successful record processing**:
+
+```python
+# Good - Manual commit after successful processing
+for message in consumer:
+    try:
+        # Process the message
+        result = process_video_data(message.value)
+        
+        # Store in database via SDK
+        ingestor.store_video_data(result)
+        
+        # Only commit after successful processing
+        consumer.commit_async()
+        
+    except Exception as e:
+        logger.error(f"Failed to process message: {e}")
+        # Do NOT commit - allow message to be reprocessed
+        continue
+```
+
+## Error Handling Patterns
+
+### Defensive Processing
+Implement robust error handling to prevent data loss:
+
+```python
+def safe_kafka_consumer(topic: str, processor_func):
+    """Safe Kafka consumer with proper error handling."""
+    consumer = KafkaConsumer(
+        topic,
+        enable_auto_commit=False,
+        auto_offset_reset='earliest'
+    )
+    
+    try:
+        for message in consumer:
+            try:
+                # Process message with SDK methods only
+                success = processor_func(message.value)
+                
+                if success:
+                    # Commit only on successful processing
+                    consumer.commit_async()
+                    logger.info(f"Successfully processed message from {topic}")
+                else:
+                    logger.warning(f"Processing failed for message from {topic}")
+                    # Do not commit - message will be reprocessed
+                    
+            except Exception as e:
+                logger.error(f"Error processing message: {e}")
+                # Do not commit on error - ensures message reprocessing
+                
+    except KeyboardInterrupt:
+        logger.info("Consumer shutdown requested")
+    finally:
+        consumer.close()
+```
+
+## Integration with Project Architecture
+
+### Use SDK for Database Operations
+**Never access database directly** - use SDK methods from [clustera_youtube_ingest](mdc:clustera-youtube-ingest/src/clustera_youtube_ingest/__init__.py):
+
+```python
+from clustera_youtube_ingest import YouTubeIngestor
+
+def process_video_message(video_data: dict) -> bool:
+    """Process video data using SDK methods only."""
+    try:
+        ingestor = YouTubeIngestor()
+        
+        # Use SDK methods - never direct database access
+        result = ingestor.store_video_data(video_data)
+        return result.get('success', False)
+        
+    except Exception as e:
+        logger.error(f"SDK operation failed: {e}")
+        return False
+    finally:
+        ingestor.close()
+```
+
+### Environment-Based Configuration
+Use environment variables from [.env.example](mdc:.env.example) for Kafka configuration:
+
+```python
+import os
+
+def create_kafka_consumer(topic: str):
+    """Create Kafka consumer with environment-based config."""
+    return KafkaConsumer(
+        topic,
+        bootstrap_servers=f"{os.getenv('KAFKA_HOST', 'localhost')}:{os.getenv('KAFKA_PORT', '9092')}",
+        enable_auto_commit=False,  # Always disable auto-commit
+        ssl_keyfile=os.getenv('KAFKA_ACCESS_KEY'),
+        ssl_certfile=os.getenv('KAFKA_ACCESS_CERT'),
+        ssl_cafile=os.getenv('KAFKA_CA_CERT'),
+        security_protocol='SSL' if all([
+            os.getenv('KAFKA_ACCESS_KEY'),
+            os.getenv('KAFKA_ACCESS_CERT'),
+            os.getenv('KAFKA_CA_CERT')
+        ]) else 'PLAINTEXT'
+    )
+```
+
+## Consumer Lifecycle Management
+
+### Graceful Shutdown
+Implement proper consumer lifecycle management:
+
+```python
+import signal
+import sys
+
+class KafkaConsumerManager:
+    def __init__(self, topic: str):
+        self.consumer = create_kafka_consumer(topic)
+        self.running = True
+        
+        # Handle shutdown signals
+        signal.signal(signal.SIGINT, self.shutdown)
+        signal.signal(signal.SIGTERM, self.shutdown)
+    
+    def shutdown(self, signum, frame):
+        """Graceful shutdown handler."""
+        logger.info("Shutdown signal received")
+        self.running = False
+        self.consumer.close()
+        sys.exit(0)
+    
+    def consume_messages(self, processor_func):
+        """Main consumption loop with proper shutdown handling."""
+        while self.running:
+            try:
+                message_batch = self.consumer.poll(timeout_ms=1000)
+                
+                for topic_partition, messages in message_batch.items():
+                    for message in messages:
+                        if not self.running:
+                            break
+                            
+                        success = processor_func(message.value)
+                        if success:
+                            # Commit only after successful processing
+                            self.consumer.commit_async()
+                            
+            except Exception as e:
+                logger.error(f"Consumer error: {e}")
+                # Continue consuming - don't crash on errors
+```
+
+## Monitoring and Logging
+
+### Consumer Metrics
+Log important consumer metrics for monitoring:
+
+```python
+def log_consumer_metrics(consumer: KafkaConsumer):
+    """Log consumer lag and processing metrics."""
+    try:
+        # Log consumer group lag
+        partitions = consumer.assignment()
+        for partition in partitions:
+            high_water_mark = consumer.highwater(partition)
+            current_position = consumer.position(partition)
+            lag = high_water_mark - current_position
+            
+            logger.info(f"Topic: {partition.topic}, Partition: {partition.partition}, "
+                       f"Position: {current_position}, Lag: {lag}")
+                       
+    except Exception as e:
+        logger.warning(f"Could not fetch consumer metrics: {e}")
+```
+
+## Common Anti-Patterns to Avoid
+
+### DON'T Auto-Commit
+```python
+# BAD - Auto-commit can cause data loss
+consumer = KafkaConsumer(
+    'topic',
+    enable_auto_commit=True  # NEVER do this
+)
+```
+
+### DON'T Commit Before Processing
+```python
+# BAD - Committing before processing
+for message in consumer:
+    consumer.commit()  # WRONG - commit before processing
+    process_message(message.value)
+```
+
+### DON'T Access Database Directly
+```python
+# BAD - Direct database access
+import psycopg2
+conn = psycopg2.connect(os.getenv('DATABASE_URL'))
+# Use SDK methods instead!
+```
+
+## Testing Consumer Logic
+
+### Mock Kafka for Development
+Use environment variables to enable mock mode during development:
+
+```python
+if os.getenv('KAFKA_MOCK_MODE', 'false').lower() == 'true':
+    # Use mock consumer for testing
+    consumer = MockKafkaConsumer()
+else:
+    consumer = create_kafka_consumer(topic)
+```
+
+## References
+
+- [KafkaPublisher Implementation](mdc:clustera-youtube-ingest/src/clustera_youtube_ingest/kafka_publisher.py)
+- [Environment Configuration](mdc:.env.example)
+- [SDK Documentation](mdc:clustera-youtube-ingest/src/clustera_youtube_ingest/__init__.py)
+- [Project Architecture](mdc:SPECIFICATION.md)
